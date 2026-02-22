@@ -7,7 +7,7 @@ from io import BytesIO
 app = Flask(__name__)
 
 # Put your Gemini API key here
-client = genai.Client(api_key="AIzaSyBp8leqNB-Qf593m8hxMYRJzxXFtgAldSk")
+client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
@@ -37,3 +37,4 @@ if __name__ == "__main__":
   port = int(os.environ.get("PORT",5000))
 
   app.run(host="0.0.0.0", port=port)
+
