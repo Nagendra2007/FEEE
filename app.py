@@ -15,22 +15,25 @@ client = genai.Client(
     api_key=os.environ.get("GEMINI_API_KEY")
 )
 
-# ===== ANALYZE ROUTE (ESP32 WILL USE THIS) =====
+# ===== ANALYZE ROUTE =====
 @app.route("/analyze", methods=["POST"])
 def analyze():
     global latest_result, latest_timestamp
 
-    if 'image' not in request.files:
+    # Check if any file was uploaded
+    if len(request.files) == 0:
         return jsonify({"error": "No image uploaded"}), 400
 
-    file = request.files['image']
-    image = Image.open(file.stream)
-
-    # --- SPEED OPTIMIZATION ---
-    image = image.convert("RGB")
-    image.thumbnail((512, 512))  # Resize for faster processing
-
     try:
+        # Get first uploaded file (Kodular sends unknown field name)
+        file = list(request.files.values())[0]
+
+        image = Image.open(file.stream)
+        image = image.convert("RGB")
+
+        # Resize for speed
+        image.thumbnail((512, 512))
+
         start_time = time.time()
 
         result = client.models.generate_content(
@@ -57,7 +60,7 @@ def analyze():
         return jsonify({"error": "AI processing failed"}), 500
 
 
-# ===== LATEST RESULT ROUTE (APP WILL POLL THIS) =====
+# ===== LATEST ROUTE (FOR AUTO MODE LATER) =====
 @app.route("/latest", methods=["GET"])
 def latest():
     return jsonify({
