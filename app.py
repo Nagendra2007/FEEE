@@ -1,41 +1,72 @@
 from flask import Flask, request, jsonify
-import requests
 from google import genai
 from PIL import Image
-from io import BytesIO
 import os
+import time
 
 app = Flask(__name__)
 
-# Put your Gemini API key here
-client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+# ===== GLOBAL STORAGE =====
+latest_result = ""
+latest_timestamp = 0
 
+# ===== GEMINI CLIENT =====
+client = genai.Client(
+    api_key=os.environ.get("GEMINI_API_KEY")
+)
+
+# ===== ANALYZE ROUTE (ESP32 WILL USE THIS) =====
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    data = request.json
-    image_url = data.get("image_url")
+    global latest_result, latest_timestamp
 
-    if not image_url:
-        return jsonify({"error": "No image URL provided"}), 400
+    if 'image' not in request.files:
+        return jsonify({"error": "No image uploaded"}), 400
 
-    # Download image
-    response = requests.get(image_url)
-    image = Image.open(BytesIO(response.content))
+    file = request.files['image']
+    image = Image.open(file.stream)
 
-    # Send to Gemini
-    result = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[
-            "Describe this image briefly in two lines for a blind person.Only give the information",
-            image
-        ]
-    )
+    # --- SPEED OPTIMIZATION ---
+    image = image.convert("RGB")
+    image.thumbnail((512, 512))  # Resize for faster processing
 
-    return jsonify({"text": result.text})
+    try:
+        start_time = time.time()
 
+        result = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                "Describe main objects briefly.",
+                image
+            ],
+            generation_config={
+                "max_output_tokens": 40
+            }
+        )
+
+        processing_time = time.time() - start_time
+        print("Gemini processing time:", processing_time)
+
+        latest_result = result.text
+        latest_timestamp = time.time()
+
+        return jsonify({"text": latest_result})
+
+    except Exception as e:
+        print("Error:", str(e))
+        return jsonify({"error": "AI processing failed"}), 500
+
+
+# ===== LATEST RESULT ROUTE (APP WILL POLL THIS) =====
+@app.route("/latest", methods=["GET"])
+def latest():
+    return jsonify({
+        "text": latest_result,
+        "timestamp": latest_timestamp
+    })
+
+
+# ===== RUN SERVER =====
 if __name__ == "__main__":
-  port = int(os.environ.get("PORT",5000))
-
-  app.run(host="0.0.0.0", port=port)
-
-
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
